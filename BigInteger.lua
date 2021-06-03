@@ -93,6 +93,15 @@ end
 
 --Create a new BigInteger
 function BigInteger:new(num, s, base)
+  if not num then
+      return setmetatable({
+          value=nil,
+          sign=nil
+        },
+        mt
+      )
+  end
+
   assert(num~=nil and type(num)=="string", "Invalid value: " .. num .. " is not a string.")
   assert(s~=nil and type(s)=="string" and (s == '+' or s == '-'), "Invalid sign.") 
   assert(base==nil or (type(base)=="number" and base>1 and base<=36), "Invalid base.")
@@ -134,6 +143,85 @@ local EIGHT=BigInteger.EIGHT()
 local NINE=BigInteger.NINE()
 local TEN=BigInteger.TEN()
 
+-- low poss fix zero
+local function fixzero(int, num)
+  assert(num >= 0)
+  if int:equals(ZERO) then
+    return int
+  end
+  if num == 0 then
+    return ONE
+  else
+    for i=1, num do
+      table.insert(int.value, 1, 0)
+    end
+    return int
+  end
+end
+
+function subNum(bint, from, to, sign)
+  assert(from <= to and from <= #bint.value and to <= #bint.value, "from or to bad")
+  local tbl = {}
+  while from <= to do
+    table.insert(tbl, bint.value[from])
+    if from > to then
+      break
+    end
+    from = from + 1
+  end
+
+  local bi = BigInteger:new()
+  bi.value = tbl
+  bi.sign = sign
+  removeTrailingZeroes(bi)
+  return bi
+end
+
+-- for multiplyKaratsuba
+function getLower(bint, n)
+  if #bint.value <= n then
+    return bint:abs()
+  end
+  return subNum(bint, 1, n, '+')
+end
+
+-- for multiplyKaratsuba
+function getUpper(bint, n)
+  if #bint.value <= n then
+    return BigInteger.ZERO()
+  end
+  return subNum(bint, n+1, #bint.value, '+')
+end
+
+-- multiply use Karatsuba algorithm
+local function multiplyKaratsuba(x, y)
+  local xlen = #x.value
+  local ylen = #y.value
+
+  if xlen < 40 or ylen < 40 then
+    return x:multiplyNormal(y)
+  end
+
+  local half = math.floor((math.max(xlen, ylen))/2)
+  local xl = getLower(x, half)
+  local xh = getUpper(x, half)
+  local yl = getLower(y, half)
+  local yh = getUpper(y, half)
+
+  local p1 = multiplyKaratsuba(xh, yh)
+  local p2 = multiplyKaratsuba(xl, yl)  
+  local p3 = multiplyKaratsuba(xh:add(xl), yh:add(yl)):subtract(p1):subtract(p2)
+
+  local r1 = fixzero(p1, 2*half)
+  local r2 = fixzero(p3, half)
+  local ret = r1:add(r2):add(p2)
+
+  if x.sign ~= y.sign then
+      return ret:negate()
+  else 
+      return ret
+  end
+end
 
 --Set the value of this BigInteger
 function BigInteger:setValue(num)
@@ -346,7 +434,10 @@ end
 --Multiply two BigIntegers together
 function BigInteger:multiply(num)
   assert(type(num)=="table" and num.value~=nil and num.sign~=nil, "Failed to multiply " .. self:toString() .. ".")
+  return multiplyKaratsuba(self, num)
+end
 
+function BigInteger:multiplyNormal(num)
   local prod=BigInteger.ZERO()
   local workingString=""
   local carry=0

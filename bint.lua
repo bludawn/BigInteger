@@ -94,8 +94,16 @@ will throw assertions.
 
 ]]
 
-require("mycore")
-require("BigInteger")
+math.mininteger = 0
+math.maxinteger = 0x7fffffff
+math.type = function(x)
+    local a, b = math.modf(x, 1)
+    if b ~= 0 then
+        return "float"
+    else
+        return "integer"
+    end
+end
 
 -- Returns number of bits of the internal lua integer type.
 local function luainteger_bitsize()
